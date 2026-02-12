@@ -1,0 +1,1 @@
+export const USER_IP_STORAGE_KEY = 'USER_IP_STORAGE_KEY'

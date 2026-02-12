@@ -1,0 +1,35 @@
+pluginManagement {
+    includeBuild("../node_modules/@react-native/gradle-plugin")
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "org.gradle.toolchains.foojay-resolver-convention") {
+                useVersion("0.4.0")
+            }
+        }
+    }
+}
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    ex.autolinkLibrariesFromCommand([
+        "node",
+        "node_modules/react-native/cli.js",
+        "config"
+    ])  
+}
+rootProject.name = 'kyte'
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+includeBuild('../node_modules/react-native') {
+    dependencySubstitution {
+        substitute(module("com.facebook.react:react-android"))
+            .using(project(":packages:react-native:ReactAndroid"))
+        substitute(module("com.facebook.react:react-native"))
+            .using(project(":packages:react-native:ReactAndroid"))
+        substitute(module("com.facebook.react:hermes-android"))
+            .using(project(":packages:react-native:ReactAndroid:hermes-engine"))
+    }
+}
+// Include codegen workspace so build-from-source can find generators.
+includeBuild('../node_modules/@react-native/codegen')
+include ':react-native-config'
+project(':react-native-config').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-config/android')

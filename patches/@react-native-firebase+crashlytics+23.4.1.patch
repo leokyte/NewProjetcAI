@@ -1,0 +1,60 @@
+diff --git a/node_modules/@react-native-firebase/crashlytics/ios/RNFBCrashlytics/RNFBCrashlyticsModule.m b/node_modules/@react-native-firebase/crashlytics/ios/RNFBCrashlytics/RNFBCrashlyticsModule.m
+index ada982b7a..d8fe1ebd4 100644
+--- a/node_modules/@react-native-firebase/crashlytics/ios/RNFBCrashlytics/RNFBCrashlyticsModule.m
++++ b/node_modules/@react-native-firebase/crashlytics/ios/RNFBCrashlytics/RNFBCrashlyticsModule.m
+@@ -18,6 +18,7 @@
+ #include <Foundation/Foundation.h>
+ #include <sys/sysctl.h>
+ 
++#import <React/RCTBridgeModule.h>
+ #import <React/RCTConvert.h>
+ #import <React/RCTLog.h>
+ #import <React/RCTUtils.h>
+diff --git a/node_modules/@react-native-firebase/crashlytics/lib/handlers.js b/node_modules/@react-native-firebase/crashlytics/lib/handlers.js
+index 55021113f..b439c0513 100644
+--- a/node_modules/@react-native-firebase/crashlytics/lib/handlers.js
++++ b/node_modules/@react-native-firebase/crashlytics/lib/handlers.js
+@@ -31,13 +31,20 @@ export function createNativeErrorObj(error, stackFrames, isUnhandledRejection, j
+   nativeObj.frames = [];
+ 
+   if (jsErrorName) {
++    const safeName = typeof jsErrorName === 'string' ? jsErrorName : (() => {
++      try {
++        return JSON.stringify(jsErrorName);
++      } catch (_e) {
++        return '<unknown>';
++      }
++    })();
+     // Option to fix crashlytics display and alerting. You can add an error name to the recordError function
+     nativeObj.frames.push({
+       src: '<unknown>',
+       line: 0,
+       col: 0,
+       fn: '<unknown>',
+-      file: jsErrorName,
++      file: safeName,
+     });
+   }
+ 
+@@ -45,13 +52,20 @@ export function createNativeErrorObj(error, stackFrames, isUnhandledRejection, j
+     const { columnNumber, lineNumber, fileName, functionName, source } = stackFrames[i];
+     let fileNameParsed = '<unknown>';
+     if (fileName) {
+-      const subStrLen = fileName.indexOf('?');
++      const subStrLen = typeof fileName === 'string' ? fileName.indexOf('?') : -1;
+       if (subStrLen < 0) {
+         fileNameParsed = fileName;
+       } else if (subStrLen > 0) {
+         fileNameParsed = fileName.substring(0, subStrLen);
+       }
+     }
++    if (typeof fileNameParsed !== 'string') {
++      try {
++        fileNameParsed = JSON.stringify(fileNameParsed);
++      } catch (_e) {
++        fileNameParsed = '<unknown>';
++      }
++    }
+ 
+     nativeObj.frames.push({
+       src: source,

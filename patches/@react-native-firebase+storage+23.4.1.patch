@@ -1,0 +1,31 @@
+diff --git a/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageCommon.h b/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageCommon.h
+index 36f601d..4a6fe02 100644
+--- a/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageCommon.h
++++ b/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageCommon.h
+@@ -17,6 +17,14 @@
+  */
+ #import <Photos/Photos.h>
+ 
++#if __has_include(<FirebaseStorage/FIRStorageTypedefs.h>)
++@import FirebaseStorage;
++#elif __has_include(<FirebaseStorage/FirebaseStorage-Swift.h>)
++#import <FirebaseStorage/FirebaseStorage-Swift.h>
++#elif __has_include(<FirebaseStorage/FirebaseStorage.h>)
++#import <FirebaseStorage/FirebaseStorage.h>
++#endif
++
+ @interface RNFBStorageCommon : NSObject
+ 
+ + (NSDictionary *)metadataToDict:(FIRStorageMetadata *)metadata;
+diff --git a/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageModule.m b/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageModule.m
+index a3695b6..6bbe481 100644
+--- a/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageModule.m
++++ b/node_modules/@react-native-firebase/storage/ios/RNFBStorage/RNFBStorageModule.m
+@@ -15,6 +15,7 @@
+  *
+  */
+ 
++#import <React/RCTBridgeModule.h>
+ #import <Firebase/Firebase.h>
+ #import <React/RCTUtils.h>
+ 

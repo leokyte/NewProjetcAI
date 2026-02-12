@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Kyte</string>
+    <string name="intercom_gcm_sender_id">1068616619719</string>
+    <string name="facebook_app_id">187826571838563</string>
+    <string name="facebook_client_token">e1afbb371cbef76a820c360a66522c0c</string>
+    <string name="fb_login_protocol_scheme">fb187826571838563</string>
+    <string name="filter_view_example_kyte">Kyte</string>
+    <!-- Example: Sets all OneSignal notification's accent color to Green by default.  -->
+    <!-- Color format is in ARGB. -->
+    <string name="onesignal_notification_accent_color">ff2dd1ac</string>
+</resources>

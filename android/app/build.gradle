@@ -1,0 +1,304 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+apply from: rootProject.file("../node_modules/react-native-config/android/dotenv.gradle")
+apply plugin: "com.google.firebase.crashlytics"
+apply plugin: "com.google.firebase.firebase-perf"
+
+def reactNativeDirVar = rootProject.file("../node_modules/react-native")
+def reactNativeCodegenDirVar = rootProject.file("../node_modules/@react-native/codegen")
+
+react {
+    reactNativeDir = reactNativeDirVar
+    codegenDir = reactNativeCodegenDirVar
+    cliFile = new File(reactNativeDirVar, "cli.js")
+    nodeExecutableAndArgs = [System.getenv("NODE_BINARY") ?: "node"]
+    autolinkLibrariesWithApp()
+}
+
+project.ext.envConfigFiles = [
+    posdebug    : ".env.stage",
+    catalogdebug: ".env.stage",
+    posrelease  : ".env.prod",
+    catalogrelease: ".env.prod",
+    debug       : ".env.stage",
+    release     : ".env.prod"
+]
+
+project.ext {
+    pos_versionCode = 1025
+    pos_versionName = "3.0.1"
+    catalog_versionCode = 900
+    catalog_versionName = "1.11.0"
+}
+
+def enableSeparateBuildPerCPUArchitecture = true
+def enableProguardInReleaseBuilds = false
+def jscFlavor = 'io.github.react-native-community:jsc-android-intl:2026004.+'
+def nativeArchitectures = project.getProperties().get("reactNativeDebugArchitectures")
+def reactNativeArchitectures = project.getProperties().get("reactNativeArchitectures")
+def abiVersionCodes = ["armeabi-v7a": 1, "x86": 2, "arm64-v8a": 3, "x86_64": 4]
+def abiVersionCodeMultiplier = 2097150
+def bundleVersionCodeOffset = abiVersionCodes.values().max() * abiVersionCodeMultiplier
+def isBundleBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains('bundle') }
+
+android {
+    buildFeatures {
+        prefab true
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/jni/CMakeLists.txt"
+        }
+    }
+    namespace "com.kyte"
+    compileSdk = rootProject.ext.compileSdkVersion
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+
+    defaultConfig {
+        applicationId "com.kyte"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode bundleVersionCodeOffset + project.ext.get("pos_versionCode")
+        versionName project.ext.get("pos_versionName")
+        multiDexEnabled true
+        vectorDrawables.useSupportLibrary = true
+        missingDimensionStrategy 'store', 'play'
+        missingDimensionStrategy 'react-native-camera', 'general'
+        manifestPlaceholders = [
+            onesignal_app_id               : "f35ff661-7c76-41ab-b89a-c6c36801b686",
+            onesignal_google_project_number: "REMOTE"
+        ]
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_LD=lld"
+            }
+        }
+    }
+
+    signingConfigs {
+        debug {
+            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE')) {
+                storeFile file(MYAPP_RELEASE_STORE_FILE)
+                storePassword MYAPP_RELEASE_STORE_PASSWORD
+                keyAlias MYAPP_RELEASE_KEY_ALIAS
+                keyPassword MYAPP_RELEASE_KEY_PASSWORD
+            }
+        }
+        release {
+            if (project.hasProperty('MYAPP_RELEASE_STORE_FILE')) {
+                storeFile file(MYAPP_RELEASE_STORE_FILE)
+                storePassword MYAPP_RELEASE_STORE_PASSWORD
+                keyAlias MYAPP_RELEASE_KEY_ALIAS
+                keyPassword MYAPP_RELEASE_KEY_PASSWORD
+            }
+        }
+    }
+
+    splits {
+        abi {
+            reset()
+            enable enableSeparateBuildPerCPUArchitecture
+            universalApk true  // Include all architectures in universal APK for release builds
+            if (reactNativeArchitectures) {
+                include(*reactNativeArchitectures.split(','))
+            } else {
+                include "armeabi-v7a", "x86", "arm64-v8a", "x86_64"
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            if (nativeArchitectures) {
+                ndk {
+                    abiFilters nativeArchitectures.split(',')
+                }
+            }
+            buildConfigField "String", "ENV_FILE", "\".env.stage\""
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            firebaseCrashlytics {
+                nativeSymbolUploadEnabled true
+            }
+            buildConfigField "String", "ENV_FILE", "\".env.prod\""
+        }
+        relDev {
+            initWith release
+            debuggable true
+            minifyEnabled false
+            signingConfig signingConfigs.release
+            matchingFallbacks = ['release']
+            buildConfigField "String", "ENV_FILE", "\".env.stage\""
+            externalNativeBuild {
+                cmake {
+                    // Use the release CMake flags to avoid linking against debug variants.
+                    arguments "-DCMAKE_BUILD_TYPE=RelWithDebInfo"
+                }
+            }
+        }
+    }
+
+    flavorDimensions "appTypes"
+    productFlavors {
+        pos {
+            dimension "appTypes"
+            resValue "string", "build_config_package", "com.kyte"
+            buildConfigField "String", "ENV_FILE", "\".env.stage\""
+        }
+        catalog {
+            dimension "appTypes"
+            applicationIdSuffix ".catalog"
+            versionCode bundleVersionCodeOffset + project.ext.get("catalog_versionCode")
+            versionName project.ext.get("catalog_versionName")
+            resValue "string", "build_config_package", "com.kyte"
+            buildConfigField "String", "ENV_FILE", "\".env.stage\""
+        }
+    }
+
+    packaging {
+        jniLibs {
+            pickFirsts += ['**/libjsc.so', '**/libc++_shared.so']
+        }
+        resources {
+            excludes += ['META-INF/rxjava.properties']
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            excludes += "META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+        checkDependencies false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+android.applicationVariants.all { variant ->
+    variant.outputs.each { output ->
+        def versionCodes = abiVersionCodes
+        def abi = output.getFilter(com.android.build.OutputFile.ABI)
+        def buildVersionCode = project.ext.get("${variant.flavorName}_versionCode")
+        def variantSlug = variant.name.replaceAll(/([A-Z])/) { "-${it[0].toLowerCase()}" }.toLowerCase()
+        if (abi != null) {
+            if (!isBundleBuild) {
+                output.versionCodeOverride = versionCodes.get(abi) * abiVersionCodeMultiplier + buildVersionCode
+            }
+            output.outputFileName = "app-${abi}-${variantSlug}.apk"
+        } else {
+            output.outputFileName = "app-${variantSlug}.apk"
+        }
+    }
+}
+
+configurations.all { configuration ->
+    configuration.resolutionStrategy.eachDependency { dependency ->
+        if (dependency.requested.group == 'org.bouncycastle') {
+            dependency.useTarget 'org.bouncycastle:bcprov-jdk15to18:1.68'
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+
+    implementation platform("androidx.compose:compose-bom:2025.09.01")
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+
+    implementation "com.google.firebase:firebase-messaging:24.1.2"
+
+    debugImplementation("com.facebook.flipper:flipper:${rootProject.ext.flipperVersion}") {
+        exclude group: 'com.facebook.fbjni'
+    }
+    debugImplementation("com.facebook.flipper:flipper-network-plugin:${rootProject.ext.flipperVersion}") {
+        exclude group: 'com.facebook.flipper'
+        exclude group: 'com.squareup.okhttp3', module: 'okhttp'
+    }
+    debugImplementation("com.facebook.flipper:flipper-fresco-plugin:${rootProject.ext.flipperVersion}") {
+        exclude group: 'com.facebook.flipper'
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+
+    implementation "com.google.android.gms:play-services-location:15.0.1"
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+
+    implementation 'com.sumup:merchant-sdk:3.2.1'
+    implementation 'com.neenbedankt.gradle.plugins:android-apt:1.8'
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'org.mockito:mockito-core:4.8.0'
+
+    implementation 'com.android.installreferrer:installreferrer:1.0'
+
+    implementation(platform("com.squareup.okhttp3:okhttp-bom:4.4.1"))
+    implementation "com.squareup.okhttp3:okhttp"
+    implementation "com.squareup.okhttp3:okhttp-urlconnection"
+
+    annotationProcessor 'com.neenbedankt.bundles:argument:1.0.4'
+    implementation 'com.facebook.android:facebook-android-sdk:latest.release'
+
+    implementation "androidx.work:work-runtime:${rootProject.ext.runtimeLibVersion}"
+    implementation "androidx.work:work-runtime-ktx:${rootProject.ext.runtimeLibVersion}"
+    implementation 'com.facebook.soloader:soloader:0.10.5+'
+    implementation 'org.jetbrains:annotations:16.0.2'
+    implementation "com.android.billingclient:billing:7.0.0"
+}
+
+// Ensure these libraries run their codegen step before CMake touches the generated JNI dirs.
+def codegenProjectsRequiringPreGeneration = [
+    ':react-native-clipboard_clipboard',
+    ':react-native-community_datetimepicker',
+    ':react-native-config',
+    ':react-native-gesture-handler',
+    ':react-native-nitro-modules',
+    ':react-native-permissions',
+    ':react-native-reanimated',
+    ':react-native-vector-icons',
+    ':react-native-webview',
+    ':react-native-worklets',
+]
+
+gradle.projectsEvaluated {
+    def codegenTasks = codegenProjectsRequiringPreGeneration
+        .collect { path ->
+            def project = rootProject.findProject(path)
+            project?.tasks?.findByName('generateCodegenArtifactsFromSchema')?.path
+        }
+        .findAll { it }
+
+    if (!codegenTasks.isEmpty()) {
+        tasks.matching { it.name.startsWith('externalNativeBuild') || it.name.startsWith('configureCMake') }
+            .configureEach { dependsOn(codegenTasks) }
+    }
+}
+
+apply plugin: 'com.google.gms.google-services'
+
+tasks.register("cleanCxx", Delete) {
+    delete(file("${projectDir}/.cxx"))
+}
+
+tasks.named("clean").configure {
+    dependsOn("cleanCxx")
+}

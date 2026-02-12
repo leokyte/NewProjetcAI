@@ -1,0 +1,540 @@
+require 'fileutils'
+require 'pathname'
+require 'set'
+require 'json'
+require_relative '../node_modules/react-native/scripts/react_native_pods'
+require_relative '../node_modules/react-native-permissions/scripts/setup'
+require 'xcodeproj'
+
+STATIC_FRAMEWORK_PODS = %w[
+  RNFBApp
+  RNFBAnalytics
+  RNFBAuth
+  RNFBCrashlytics
+  RNFBFirestore
+  RNFBPerf
+  RNFBRemoteConfig
+  RNFBStorage
+  RNAppleAuthentication
+  react-native-appsflyer
+  react-native-onesignal
+].freeze
+
+STATIC_LIBRARY_GUARD_PODS = %w[
+  hermes-engine
+  React-hermes
+  ReactCommon
+  React-Core
+  React-CoreModules
+  React-Fabric
+  React-FabricComponents
+  React-RuntimeCore
+  React-RuntimeHermes
+  React-runtimeexecutor
+  RealmJS
+  gRPC-Core
+  gRPC-C++
+  BoringSSL-GRPC
+].freeze
+
+SIMULATOR_ARM64_ONLY_PODS = %w[
+  react-native-appsflyer
+  AppsFlyerFramework
+].freeze
+
+platform :ios, '16.0'
+$RNFirebaseAsStaticFramework = true
+use_modular_headers!
+
+setup_permissions([
+  'AppTrackingTransparency',
+  'Bluetooth',
+  'Camera',
+  'Contacts',
+  'Microphone',
+  'Notifications',
+  'PhotoLibrary',
+  'PhotoLibraryAddOnly',
+])
+
+def shared_pods
+  config = use_native_modules!
+
+    use_react_native!(
+      :path => '../node_modules/react-native',
+      :hermes_enabled => true,
+      :fabric_enabled => true,
+      :app_path => '..'
+    )
+  # Uncomment the next line if you're using Swift or would like to use dynamic frameworks
+  # use_frameworks!
+
+  # Enables Flipper.
+  #
+  # Note that if you have use_frameworks! enabled, Flipper will not work and
+  # you should disable these next few lines.
+  #use_flipper!
+
+  pod 'RNShare', :path => '../node_modules/react-native-share'
+  pod 'react-native-locale', :path => '../node_modules/@kyteapp/react-native-locale'
+
+end
+
+def onesignal_pod
+  pod 'OneSignalXCFramework', '>= 5.0', '< 6.0'
+end
+
+target 'kyte' do
+  shared_pods
+end
+
+target 'kyte catalog' do
+  shared_pods
+end
+
+target 'OneSignalNotificationServiceExtension' do
+  onesignal_pod
+end
+
+target 'OneSignalNotificationServiceExtension Catalog' do
+  onesignal_pod
+end
+
+pre_install do |installer|
+  installer.pod_targets.each do |pod|
+    if STATIC_FRAMEWORK_PODS.include?(pod.name)
+      build_type = Pod::BuildType.static_framework
+      if pod.respond_to?(:build_type=)
+        pod.build_type = build_type
+      else
+        pod.instance_variable_set(:@build_type, build_type)
+      end
+      next
+    end
+
+    next unless STATIC_LIBRARY_GUARD_PODS.include?(pod.name)
+    build_type = Pod::BuildType.static_library
+    if pod.respond_to?(:build_type=)
+      pod.build_type = build_type
+    else
+      pod.instance_variable_set(:@build_type, build_type)
+    end
+  end
+end
+
+post_install do |installer|
+  puts '🔧 Running custom post_install adjustments'
+  # Apply patches to fix gRPC template compilation errors in both gRPC-Core and gRPC-C++
+  ['gRPC-Core', 'gRPC-C++'].each do |pod_name|
+    grpc_path = "#{installer.sandbox.root}/#{pod_name}"
+    patch_file = "#{Dir.pwd}/patches/#{pod_name}.patch"
+    basic_seq_file = "#{grpc_path}/src/core/lib/promise/detail/basic_seq.h"
+    
+    if File.exist?(grpc_path) && File.exist?(patch_file) && File.exist?(basic_seq_file)
+      # Check if patch needs to be applied by looking for the pattern without <>
+      content = File.read(basic_seq_file)
+      if content.include?("Traits::template CallSeqFactory(f_, *cur_, std::move(arg))") && !content.include?("Traits::template CallSeqFactory<>(f_, *cur_, std::move(arg))")
+        puts "🔧 Applying #{pod_name} patch to fix template compilation errors..."
+        current_dir = Dir.pwd
+        begin
+          Dir.chdir(grpc_path)
+          result = system("patch -p1 < '#{patch_file}'")
+          puts result ? "✅ #{pod_name} patch applied successfully!" : "❌ Failed to apply #{pod_name} patch"
+        ensure
+          Dir.chdir(current_dir)
+        end
+      else
+        puts "✅ #{pod_name} patch already applied or not needed"
+      end
+    else
+      puts "⚠️  #{pod_name} patch file or target not found - skipping patch"
+    end
+  end
+
+  # Ensure proper iOS deployment target for all pods
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
+    end
+  end
+
+  # Add BoringSSL-GRPC compiler flags adjustment
+  installer.pods_project.targets.each do |target|
+    if target.name == 'BoringSSL-GRPC'
+      target.source_build_phase.files.each do |file|
+        if file.settings && file.settings['COMPILER_FLAGS']
+          flags = file.settings['COMPILER_FLAGS'].split
+          flags.reject! { |flag| flag == '-GCC_WARN_INHIBIT_ALL_WARNINGS' }
+          file.settings['COMPILER_FLAGS'] = flags.join(' ')
+        end
+      end
+    end
+
+    # Existing target configurations
+    target.build_configurations.each do |config|
+      config.build_settings["DEVELOPMENT_TEAM"] = "K9AU38Z2SU"
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)', '_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION']
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      # Work around Xcode build-system races seen with very large target graphs
+      config.build_settings['HEADERMAP_USES_VFS'] = 'NO'
+    end
+  end
+
+  # Existing post install hooks
+  react_native_post_install(installer)
+  # Ensure gRPC exposes a modulemap for modular header builds
+  sandbox_root = installer.sandbox.root
+  puts "ℹ️ Pods sandbox root: #{sandbox_root}"
+  grpc_modulemap = File.join(sandbox_root, 'gRPC-Core/include/grpc/module.modulemap')
+  grpc_private_headers = File.join(sandbox_root, 'Headers/Private/grpc')
+  if File.exist?(grpc_modulemap)
+    FileUtils.mkdir_p(grpc_private_headers)
+    FileUtils.cp(grpc_modulemap, File.join(grpc_private_headers, 'gRPC-Core.modulemap'))
+    puts "✅ Copied gRPC modulemap to Headers/Private/grpc (exists? #{Dir.exist?(grpc_private_headers)})"
+  else
+    puts "⚠️ gRPC modulemap not found at #{grpc_modulemap}"
+  end
+
+  ensure_grpc_phase = lambda do |target|
+    phase_name = '[CP-User] Ensure gRPC modulemap'
+    existing = target.shell_script_build_phases.find { |phase| phase.name == phase_name }
+    return if existing
+
+    phase = target.new_shell_script_build_phase(phase_name)
+    # Ensure the script runs before other phases so the modulemap exists for compilation
+    phases = target.build_phases
+    phases.delete(phase)
+    phases.insert(0, phase)
+    phase.shell_script = <<~'SH'
+      set -euo pipefail
+      MODULEMAP_SRC="${PODS_ROOT}/gRPC-Core/include/grpc/module.modulemap"
+      MODULEMAP_DST_DIR="${PODS_ROOT}/Headers/Private/grpc"
+      MODULEMAP_DST="${MODULEMAP_DST_DIR}/gRPC-Core.modulemap"
+      if [ -f "${MODULEMAP_SRC}" ]; then
+        mkdir -p "${MODULEMAP_DST_DIR}"
+        cp "${MODULEMAP_SRC}" "${MODULEMAP_DST}"
+      fi
+    SH
+  end
+
+  installer.pods_project.targets.each do |target|
+    ensure_grpc_phase.call(target)
+
+    if target.name == 'libwebp'
+      excluded_files = 'sharpyuv/sharpyuv_sse2.c src/dsp/*sse*.c'
+      target.build_configurations.each do |config|
+        config.build_settings['EXCLUDED_SOURCE_FILE_NAMES[sdk=iphonesimulator*][arch=arm64]'] = excluded_files
+        config.build_settings['EXCLUDED_SOURCE_FILE_NAMES[sdk=iphoneos*][arch=arm64]'] = excluded_files
+      end
+    end
+
+    if SIMULATOR_ARM64_ONLY_PODS.include?(target.name)
+      target.build_configurations.each do |config|
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'i386 x86_64'
+      end
+    end
+  end
+
+  add_tmp_include = lambda do |xcconfig_path|
+    include_directive = '#include? "../../../tmp.xcconfig"'
+    if File.exist?(xcconfig_path)
+      contents = File.read(xcconfig_path)
+      unless contents.include?(include_directive)
+        File.open(xcconfig_path, 'w') do |file|
+          file.puts(include_directive)
+          file.write(contents)
+        end
+      end
+    end
+  end
+
+  sanitize_xcconfig_file = lambda do |xcconfig_path|
+    next unless File.exist?(xcconfig_path)
+    contents = File.read(xcconfig_path)
+    updated = contents.gsub(/-weak_framework\s+"FirebaseFirestoreInternal"\s*/, '')
+    File.write(xcconfig_path, updated) if updated != contents
+  end
+
+  ['Pods-kyte', 'Pods-kyte catalog'].each do |support_target|
+    ['debug', 'release'].each do |configuration|
+      xcconfig = File.join(
+        installer.sandbox.root,
+        'Target Support Files',
+        support_target,
+        "#{support_target}.#{configuration}.xcconfig"
+      )
+      add_tmp_include.call(xcconfig)
+      sanitize_xcconfig_file.call(xcconfig)
+    end
+  end
+
+  firebase_header = File.join(sandbox_root, 'Firebase/CoreOnly/Sources/Firebase.h')
+  unless File.exist?(firebase_header)
+    firebase_header = File.join(sandbox_root, 'Headers/Private/Firebase/Firebase.h')
+  end
+  if File.exist?(firebase_header)
+    contents = File.read(firebase_header)
+    original_mode = File.stat(firebase_header).mode
+    writable_mode = original_mode | 0o200
+    FileUtils.chmod(writable_mode, firebase_header) unless File.writable?(firebase_header)
+    guarded_imports = {
+      '#import <FirebaseAuth/FirebaseAuth-Swift.h>' => <<~'AUTH'.strip,
+        #if __has_include(<FirebaseAuth/FirebaseAuth-Swift.h>)
+        #import <FirebaseAuth/FirebaseAuth-Swift.h>
+        #endif
+      AUTH
+      '#import <FirebaseStorage/FirebaseStorage-Swift.h>' => <<~'STORAGE'.strip,
+        #if __has_include(<FirebaseStorage/FirebaseStorage-Swift.h>)
+        #import <FirebaseStorage/FirebaseStorage-Swift.h>
+        #endif
+      STORAGE
+    }
+
+    updated = false
+    guarded_imports.each do |needle, replacement|
+      next unless contents.include?(needle)
+      contents.sub!(needle, replacement)
+      updated = true
+    end
+
+    if updated
+      File.open(firebase_header, 'w') { |file| file.write(contents) }
+    end
+    FileUtils.chmod(original_mode, firebase_header) unless File.stat(firebase_header).mode == original_mode
+  end
+
+  one_signal_dir = File.join(installer.sandbox.root, 'OneSignalXCFramework/iOS_SDK/OneSignalSDK/OneSignal_XCFramework')
+  renamed_framework = File.join(one_signal_dir, 'OneSignalFramework.xcframework')
+  legacy_framework = File.join(one_signal_dir, 'OneSignal.xcframework')
+  if File.exist?(renamed_framework) && !File.exist?(legacy_framework)
+    FileUtils.ln_sf(renamed_framework, legacy_framework)
+  end
+
+  placeholder_modulemaps = {
+    'Headers/Public/react_runtime/React-jsitooling.modulemap' => 'react_runtime jsitooling module placeholder',
+    'Headers/Public/ReactCommon/React-RuntimeApple.modulemap' => 'ReactCommon runtime apple placeholder'
+  }
+  placeholder_modulemaps.each do |relative_path, description|
+    full_path = File.join(sandbox_root, relative_path)
+    FileUtils.mkdir_p(File.dirname(full_path))
+    File.open(full_path, 'w') do |file|
+      file.puts("// Placeholder modulemap (#{description}) generated via post_install to avoid duplicate module definitions.")
+    end
+  end
+  react_native_version = begin
+    package_json = File.expand_path('../node_modules/react-native/package.json', __dir__)
+    JSON.parse(File.read(package_json))['version']
+  rescue StandardError
+    '0.0.0'
+  end
+  ensure_codegen_props = lambda do |project|
+    target = project.targets.find { |t| t.name == 'ReactCodegen' }
+    return unless target
+
+    generated_components_root = File.expand_path('build/generated/ios/react/renderer/components', __dir__)
+    unless Dir.exist?(generated_components_root)
+      puts "⚠️ ReactCodegen components folder not found at #{generated_components_root} – skipping source relink."
+      return
+    end
+
+    find_group = lambda do |group|
+      next unless group.isa == 'PBXGroup'
+      return group if group.name == 'ReactCodegen' && group.path == '../build/generated/ios'
+
+      group.children.each do |child|
+        next unless child.isa == 'PBXGroup'
+        found = find_group.call(child)
+        return found if found
+      end
+      nil
+    end
+
+    react_codegen_group = find_group.call(project.main_group)
+
+    pods_root = Pathname.new(
+      project.respond_to?(:project_dir) && project.project_dir ? project.project_dir : File.dirname(project.path)
+    )
+
+    phase = target.source_build_phase
+    component_sources = Dir.glob(File.join(generated_components_root, '**/*.{cpp,mm}'))
+    if component_sources.empty?
+      puts "⚠️ ReactCodegen: no generated component sources discovered under #{generated_components_root}"
+      return
+    end
+    puts "ℹ️ ReactCodegen: discovered #{component_sources.length} generated component source files."
+
+    phase.files.dup.each do |build_file|
+      file_ref = build_file.file_ref
+      next unless file_ref && file_ref.respond_to?(:real_path)
+      real_path = file_ref.real_path
+      next unless real_path && real_path.to_s.start_with?(generated_components_root)
+
+      phase.remove_build_file(build_file)
+    end
+
+    owning_group = react_codegen_group || project.main_group
+    owning_group_root = if owning_group.respond_to?(:real_path) && owning_group.real_path
+                          Pathname.new(owning_group.real_path)
+                        end
+
+    added_files = 0
+    skipped_files = 0
+    existing_sources = phase.files.map do |build_file|
+      ref = build_file.file_ref
+      next unless ref && ref.respond_to?(:real_path) && ref.real_path
+      ref.real_path.to_s
+    end.compact.to_set
+
+    component_sources.sort.each do |file_path|
+      file_pathname = Pathname.new(file_path)
+      file_ref = project.files.find { |ref| ref.real_path == file_pathname }
+      unless file_ref
+        relative_path = begin
+          if owning_group_root
+            file_pathname.relative_path_from(owning_group_root)
+          else
+            file_pathname.relative_path_from(pods_root)
+          end
+        rescue ArgumentError
+          file_pathname.relative_path_from(pods_root)
+        end
+        file_ref = owning_group.new_file(relative_path.to_s)
+      end
+
+      file_real_path = file_ref.respond_to?(:real_path) ? file_ref.real_path.to_s : file_pathname.to_s
+      if existing_sources.include?(file_real_path)
+        skipped_files += 1
+        next
+      end
+      phase.add_file_reference(file_ref)
+      existing_sources.add(file_real_path)
+      added_files += 1
+    end
+
+    puts "ℹ️ ReactCodegen target updated with #{added_files} new generated sources (#{skipped_files} already present)."
+  end
+
+  rewrite_codegen_script_phase = lambda do |project|
+    target = project.targets.find { |t| t.name == 'ReactCodegen' }
+    return unless target
+
+    phase = target.shell_script_build_phases.find { |p| p.name&.include?('Generate Specs') }
+    return unless phase
+
+    dynamic_script = <<~'SH'
+      set -euo pipefail
+
+      PODS_ROOT="${PODS_ROOT:-${SRCROOT}/Pods}"
+      pushd "${PODS_ROOT}/../" >/dev/null
+      RCT_SCRIPT_POD_INSTALLATION_ROOT="$(pwd)"
+      popd >/dev/null
+
+      APP_PATH="${RCT_SCRIPT_POD_INSTALLATION_ROOT}/.."
+      if [ ! -d "${APP_PATH}" ]; then
+        echo "error: Unable to resolve React Native app path from ${RCT_SCRIPT_POD_INSTALLATION_ROOT}" >&2
+        exit 1
+      fi
+
+      export RCT_SCRIPT_APP_PATH="$(cd "${APP_PATH}" && pwd)"
+      export RCT_SCRIPT_RN_DIR="${RCT_SCRIPT_APP_PATH}/node_modules/react-native"
+      export RCT_SCRIPT_OUTPUT_DIR="${RCT_SCRIPT_POD_INSTALLATION_ROOT}"
+      export RCT_SCRIPT_TYPE="withCodegenDiscovery"
+
+      SCRIPT_PHASES_SCRIPT="${RCT_SCRIPT_RN_DIR}/scripts/react_native_pods_utils/script_phases.sh"
+      WITH_ENVIRONMENT="${RCT_SCRIPT_RN_DIR}/scripts/xcode/with-environment.sh"
+
+      if [ ! -f "${WITH_ENVIRONMENT}" ]; then
+        echo "error: React Native environment helper was not found at ${WITH_ENVIRONMENT}" >&2
+        exit 1
+      fi
+
+      /bin/sh -c "${WITH_ENVIRONMENT} ${SCRIPT_PHASES_SCRIPT}"
+    SH
+
+    phase.shell_script = dynamic_script
+    phase.show_env_vars_in_log = '1'
+  end
+
+  fix_hermes_replace_script = lambda do |project|
+    target = project.targets.find { |t| t.name == 'hermes-engine' }
+    return unless target
+
+    target.shell_script_build_phases.each do |phase|
+      next unless phase.shell_script&.include?('replace_hermes_version.js')
+      hermes_version = react_native_version
+
+      phase.shell_path = '/bin/bash'
+      phase.shell_script = <<~SH
+        set -eo pipefail
+
+        export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
+
+        RN_PATH="${REACT_NATIVE_PATH:-${PODS_ROOT}/../../node_modules/react-native}"
+        if [ ! -d "${RN_PATH}" ]; then
+          RN_PATH="${PODS_ROOT}/../.."
+        fi
+
+        if [ -z "${NODE_BINARY:-}" ]; then
+          if [ -f "${RN_PATH}/scripts/find-node-for-xcode.sh" ]; then
+            . "${RN_PATH}/scripts/find-node-for-xcode.sh"
+          fi
+          NODE_BINARY="${NODE_BINARY:-$(command -v node || true)}"
+        fi
+
+        if [ -z "${NODE_BINARY}" ]; then
+          echo "error: Unable to find node binary; set NODE_BINARY environment variable." >&2
+          exit 1
+        fi
+
+        . "${RN_PATH}/scripts/xcode/with-environment.sh"
+
+        CONFIG="Release"
+        if echo ${GCC_PREPROCESSOR_DEFINITIONS:-} | grep -q "DEBUG=1"; then
+          CONFIG="Debug"
+        fi
+
+        "${NODE_BINARY}" "${RN_PATH}/sdks/hermes-engine/utils/replace_hermes_version.js" -c "${CONFIG}" -r "#{hermes_version}" -p "${PODS_ROOT}"
+      SH
+    end
+  end
+
+  desired_app_library_paths = ['$(inherited)', '$(SDKROOT)/usr/lib/swift', '${PODS_CONFIGURATION_BUILD_DIR}/AppAuth']
+  sanitize_library_search_paths = lambda do |value|
+    entries = Array(value).compact.flat_map do |entry|
+      entry_string = entry.to_s
+      entry_string
+        .gsub('$(inherited)', ' $(inherited) ')
+        .split(/\s+/)
+        .reject(&:empty?)
+    end
+    desired_app_library_paths.each { |path| entries.delete(path) }
+    desired_app_library_paths + entries
+  end
+
+  app_target_names = ['kyte', 'kyte catalog']
+  adjust_user_project = lambda do |project_path|
+    return unless File.exist?(project_path)
+    project = Xcodeproj::Project.open(project_path)
+    project_changed = false
+    project.root_object.attributes['BuildIndependentTargetsInParallel'] = false
+    project.targets.each do |target|
+      next unless app_target_names.include?(target.name)
+      target.build_configurations.each do |config|
+        config.build_settings['HEADERMAP_USES_VFS'] = 'NO'
+        config.build_settings['LIBRARY_SEARCH_PATHS'] = sanitize_library_search_paths.call(
+          config.build_settings['LIBRARY_SEARCH_PATHS']
+        )
+      end
+      project_changed = true
+    end
+    project.save if project_changed
+  end
+
+  adjust_user_project.call(File.expand_path('kyte.xcodeproj', __dir__))
+
+  ensure_codegen_props.call(installer.pods_project)
+  rewrite_codegen_script_phase.call(installer.pods_project)
+  fix_hermes_replace_script.call(installer.pods_project)
+  installer.pods_project.root_object.attributes['BuildIndependentTargetsInParallel'] = false
+  installer.pods_project.save
+end

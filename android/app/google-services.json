@@ -1,0 +1,93 @@
+{
+  "project_info": {
+    "project_number": "1068616619719",
+    "firebase_url": "https://kyte-7c484.firebaseio.com",
+    "project_id": "kyte-7c484",
+    "storage_bucket": "kyte-7c484.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1068616619719:android:4172c284b7f2a92b",
+        "android_client_info": {
+          "package_name": "com.kyte"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1068616619719-njmdng941n61r1grvhvtb5fb38stodiv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kyte",
+            "certificate_hash": "17b48ab7d2b9f43fe139741373bce86d1f667028"
+          }
+        },
+        {
+          "client_id": "1068616619719-tvgp141h51nraam1dasnk441dv0qq2l1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAkmeUDjLooUfR5t3ZxfqmmK_mK77eZcYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1068616619719-31v8a785uvc72u4ekckme9arb1cqvmbg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1068616619719-q5ic3e4iom9ho8a8lob8o7tm5aie3jf6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kytepos",
+                "app_store_id": "1345983058"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1068616619719:android:61f2d40db4b79a5ae410e2",
+        "android_client_info": {
+          "package_name": "com.kyte.catalog"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1068616619719-tvgp141h51nraam1dasnk441dv0qq2l1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAkmeUDjLooUfR5t3ZxfqmmK_mK77eZcYo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1068616619719-31v8a785uvc72u4ekckme9arb1cqvmbg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1068616619719-q5ic3e4iom9ho8a8lob8o7tm5aie3jf6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.kytepos",
+                "app_store_id": "1345983058"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

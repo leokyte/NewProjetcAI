@@ -1,0 +1,172 @@
+diff --git a/node_modules/@react-native-google-signin/google-signin/RNGoogleSignin.podspec b/node_modules/@react-native-google-signin/google-signin/RNGoogleSignin.podspec
+index 2d4d672..dc70716 100644
+--- a/node_modules/@react-native-google-signin/google-signin/RNGoogleSignin.podspec
++++ b/node_modules/@react-native-google-signin/google-signin/RNGoogleSignin.podspec
+@@ -16,5 +16,5 @@ Pod::Spec.new do |s|
+   s.source_files = "ios/**/*.{h,m,mm}"
+ 
+   s.dependency "React-Core"
+-  s.dependency "GoogleSignIn", "~> 6.2"
++  s.dependency "GoogleSignIn", "~> 7.0"
+ end
+diff --git a/node_modules/@react-native-google-signin/google-signin/ios/RNGoogleSignin.m b/node_modules/@react-native-google-signin/google-signin/ios/RNGoogleSignin.m
+index f9d2bb4..e856fb2 100644
+--- a/node_modules/@react-native-google-signin/google-signin/ios/RNGoogleSignin.m
++++ b/node_modules/@react-native-google-signin/google-signin/ios/RNGoogleSignin.m
+@@ -8,6 +8,7 @@ @interface RNGoogleSignin ()
+ @property (nonatomic) GIDConfiguration *configuration;
+ @property (nonatomic) NSArray *scopes;
+ @property (nonatomic) NSUInteger profileImageSize;
++@property (nonatomic, nullable) NSString *currentServerAuthCode;
+ 
+ @end
+ 
+@@ -79,6 +80,7 @@ - (dispatch_queue_t)methodQueue
+ 
+   GIDConfiguration* config = [[GIDConfiguration alloc] initWithClientID:clientId serverClientID:options[@"webClientId"] hostedDomain:options[@"hostedDomain"] openIDRealm:options[@"openIDRealm"]];
+   _configuration = config;
++  GIDSignIn.sharedInstance.configuration = config;
+   
+   NSArray* scopes=options[@"scopes"];
+   _scopes=scopes;
+@@ -89,8 +91,8 @@ - (dispatch_queue_t)methodQueue
+ RCT_EXPORT_METHOD(signInSilently:(RCTPromiseResolveBlock)resolve
+                   rejecter:(RCTPromiseRejectBlock)reject)
+ {
+-  [GIDSignIn.sharedInstance restorePreviousSignInWithCallback:^(GIDGoogleUser * _Nullable user, NSError * _Nullable error) {
+-    [self handleAsyncCallback:user withError:error withResolver:resolve withRejector:reject fromCallsite:@"signInSilently"];
++  [GIDSignIn.sharedInstance restorePreviousSignInWithCompletion:^(GIDGoogleUser * _Nullable user, NSError * _Nullable error) {
++    [self handleAsyncCallback:user serverAuthCode:nil withError:error withResolver:resolve withRejector:reject fromCallsite:@"signInSilently"];
+   }];
+ }
+ 
+@@ -100,8 +102,9 @@ - (dispatch_queue_t)methodQueue
+ {
+   UIViewController* presentingViewController = RCTPresentedViewController();
+   NSString* hint = options[@"loginHint"];
+-  [GIDSignIn.sharedInstance signInWithConfiguration:_configuration presentingViewController:presentingViewController hint:hint additionalScopes:_scopes callback:^(GIDGoogleUser * _Nullable user, NSError * _Nullable error) {
+-    [self handleAsyncCallback:user withError:error withResolver:resolve withRejector:reject fromCallsite:@"signIn"];
++  GIDSignIn.sharedInstance.configuration = _configuration;
++  [GIDSignIn.sharedInstance signInWithPresentingViewController:presentingViewController hint:hint additionalScopes:_scopes completion:^(GIDSignInResult * _Nullable signInResult, NSError * _Nullable error) {
++    [self handleAsyncCallback:signInResult.user serverAuthCode:signInResult.serverAuthCode withError:error withResolver:resolve withRejector:reject fromCallsite:@"signIn"];
+   }];
+   
+ }
+@@ -112,9 +115,14 @@ - (dispatch_queue_t)methodQueue
+ {
+   NSArray* scopes = options[@"scopes"];
+   UIViewController* presentingViewController = RCTPresentedViewController();
++  GIDGoogleUser *currentUser = GIDSignIn.sharedInstance.currentUser;
++  if (currentUser == nil) {
++    reject(@"addScopes", @"addScopes requires a user to be signed in", nil);
++    return;
++  }
+ 
+-  [GIDSignIn.sharedInstance addScopes:scopes presentingViewController:presentingViewController callback:^(GIDGoogleUser * _Nullable user, NSError * _Nullable error) {
+-    [self handleAsyncCallback:user withError:error withResolver:resolve withRejector:reject fromCallsite:@"addScopes"];
++  [currentUser addScopes:scopes presentingViewController:presentingViewController completion:^(GIDSignInResult * _Nullable signInResult, NSError * _Nullable error) {
++    [self handleAsyncCallback:signInResult.user serverAuthCode:signInResult.serverAuthCode withError:error withResolver:resolve withRejector:reject fromCallsite:@"addScopes"];
+   }];
+ }
+ 
+@@ -122,16 +130,18 @@ - (dispatch_queue_t)methodQueue
+                   signOutReject:(RCTPromiseRejectBlock)reject)
+ {
+   [GIDSignIn.sharedInstance signOut];
++  self.currentServerAuthCode = nil;
+   resolve([NSNull null]);
+ }
+ 
+ RCT_EXPORT_METHOD(revokeAccess:(RCTPromiseResolveBlock)resolve
+                   revokeAccessReject:(RCTPromiseRejectBlock)reject)
+ {
+-  [GIDSignIn.sharedInstance disconnectWithCallback:^(NSError * _Nullable error) {
++  [GIDSignIn.sharedInstance disconnectWithCompletion:^(NSError * _Nullable error) {
+       if (error) {
+         reject(@"revokeAccess", error.localizedDescription, error);
+       } else {
++        self.currentServerAuthCode = nil;
+         resolve([NSNull null]);
+       }
+   }];
+@@ -148,7 +158,7 @@ - (dispatch_queue_t)methodQueue
+                   rejecter:(RCTPromiseRejectBlock)reject)
+ {
+   GIDGoogleUser *currentUser = GIDSignIn.sharedInstance.currentUser;
+-  resolve(RCTNullIfNil([self createUserDictionary:currentUser]));
++  resolve(RCTNullIfNil([self createUserDictionary:currentUser serverAuthCode:self.currentServerAuthCode]));
+ }
+ 
+ RCT_EXPORT_METHOD(getTokens:(RCTPromiseResolveBlock)resolve
+@@ -160,23 +170,23 @@ - (dispatch_queue_t)methodQueue
+     return;
+   }
+ 
+-  [currentUser.authentication doWithFreshTokens:^(GIDAuthentication * _Nullable authentication, NSError * _Nullable error) {
++  [currentUser refreshTokensIfNeededWithCompletion:^(GIDGoogleUser * _Nullable user, NSError * _Nullable error) {
+     if (error) {
+       reject(@"getTokens", error.localizedDescription, error);
++    } else if (user) {
++      NSString *idToken = user.idToken.tokenString;
++      NSString *accessToken = user.accessToken.tokenString;
++      resolve(@{
++        @"idToken": RCTNullIfNil(idToken),
++        @"accessToken": RCTNullIfNil(accessToken),
++      });
+     } else {
+-      if (authentication) {
+-        resolve(@{
+-                  @"idToken" : authentication.idToken,
+-                  @"accessToken" : authentication.accessToken,
+-                  });
+-      } else {
+-        reject(@"getTokens", @"authentication was null", nil);
+-      }
++      reject(@"getTokens", @"authentication was null", nil);
+     }
+   }];
+ }
+ 
+-- (NSDictionary*)createUserDictionary: (nullable GIDGoogleUser *) user {
++- (NSDictionary*)createUserDictionary:(nullable GIDGoogleUser *)user serverAuthCode:(nullable NSString *)serverAuthCode {
+   if (!user) {
+     return nil;
+   }
+@@ -191,22 +201,32 @@ - (NSDictionary*)createUserDictionary: (nullable GIDGoogleUser *) user {
+                              @"email": user.profile.email,
+                              };
+ 
++  NSString *idToken = user.idToken.tokenString;
++  NSString *accessToken = user.accessToken.tokenString;
++
+   NSDictionary *params = @{
+                            @"user": userInfo,
+-                           @"idToken": user.authentication.idToken,
+-                           @"serverAuthCode": RCTNullIfNil(user.serverAuthCode),
+-                           @"scopes": user.grantedScopes,
++                           @"idToken": RCTNullIfNil(idToken),
++                           @"accessToken": RCTNullIfNil(accessToken),
++                           @"serverAuthCode": RCTNullIfNil(serverAuthCode),
++                           @"scopes": user.grantedScopes ?: @[],
+                            };
+   return params;
+ }
+ 
+ 
+-- (void)handleAsyncCallback: (GIDGoogleUser * _Nullable) user withError: (NSError * _Nullable) error withResolver: (RCTPromiseResolveBlock) resolve withRejector: (RCTPromiseRejectBlock) reject fromCallsite: (NSString *) from {
++- (void)handleAsyncCallback:(GIDGoogleUser * _Nullable)user
++            serverAuthCode:(NSString * _Nullable)serverAuthCode
++                 withError:(NSError * _Nullable)error
++              withResolver:(RCTPromiseResolveBlock)resolve
++             withRejector:(RCTPromiseRejectBlock)reject
++              fromCallsite:(NSString *)from {
+   if (error) {
+     [RNGoogleSignin rejectWithSigninError:error withRejector:reject];
+   } else {
+     if (user) {
+-      resolve([self createUserDictionary:user]);
++      self.currentServerAuthCode = serverAuthCode;
++      resolve([self createUserDictionary:user serverAuthCode:serverAuthCode]);
+     } else {
+       reject(from, @"user was null", nil);
+     }

@@ -1,0 +1,11 @@
+NSCameraUsageDescription = "Pedimos permissão para acessar sua câmera para que você possa tirar fotos dos seus produtos e identificá-los no inventário, compartilhá-las com os seus clientes e exibí-las em seu catálogo.";
+NSPhotoLibraryUsageDescription = "Pedimos permissão para acessar sua galeria de fotos para que você possa escolher fotos dos seus produtos e identificá-los no inventário, compartilhá-las com os seus clientes e exibí-las em seu catálogo.";
+NSLocationWhenInUseUsageDescription = "O Kyte precisa da sua autorização para utilizar sua localização enquanto estiver em uso.";
+NSBluetoothPeripheralUsageDescription = "Precisamos utilizar seu bluetooth para parear as maquininhas de cartão de crédito.";
+NSMicrophoneUsageDescription = "Precisamos utilizar seu microfone para parear as maquininhas de cartão de crédito.";
+NSLocationAlwaysUsageDescription = "O Kyte precisa da sua autorização para utilizar sua localização enquanto estiver em uso.";
+NSContactsUsageDescription = "Para completar esta ação precisamos acessar sua lista de contatos. Os contatos selecionados serão enviados para nossos servidores. Para mais informações leia nossa Política de Privacidade.";
+NSBluetoothAlwaysUsageDescription = "Precisamos utilizar seu bluetooth para parear as maquininhas de cartão de crédito e de impressão.";
+NSUserTrackingUsageDescription = "Seus dados serão utilizados para medir e melhorar a eficácia dos nossos anúncios.";
+CFBundleDisplayName = "Kyte Catálogo";
+CFBundleName = "Kyte Catálogo";

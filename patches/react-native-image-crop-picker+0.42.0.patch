@@ -1,0 +1,64 @@
+diff --git a/node_modules/react-native-image-crop-picker/android/src/main/AndroidManifest.xml b/node_modules/react-native-image-crop-picker/android/src/main/AndroidManifest.xml
+index a08629b..af59247 100644
+--- a/node_modules/react-native-image-crop-picker/android/src/main/AndroidManifest.xml
++++ b/node_modules/react-native-image-crop-picker/android/src/main/AndroidManifest.xml
+@@ -24,7 +24,9 @@
+ 
+         <activity
+             android:name="com.yalantis.ucrop.UCropActivity"
+-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
++            android:theme="@style/UCropTheme"
++            android:exported="false" 
++            />
+ 
+ 
+         <!-- Prompt Google Play services to install the backported photo picker module -->
+diff --git a/node_modules/react-native-image-crop-picker/android/src/main/java/com/reactnative/ivpusic/imagepicker/PickerModule.java b/node_modules/react-native-image-crop-picker/android/src/main/java/com/reactnative/ivpusic/imagepicker/PickerModule.java
+index c183fee..e233f9a 100644
+--- a/node_modules/react-native-image-crop-picker/android/src/main/java/com/reactnative/ivpusic/imagepicker/PickerModule.java
++++ b/node_modules/react-native-image-crop-picker/android/src/main/java/com/reactnative/ivpusic/imagepicker/PickerModule.java
+@@ -103,6 +103,9 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
+     private int width = 0;
+     private int height = 0;
+ 
++    private int defaultCropWidth = 0;
++    private int defaultCropHeight = 0;
++
+     private Uri mCameraCaptureURI;
+     private String mCurrentMediaPath;
+     private ResultCollector resultCollector = new ResultCollector();
+@@ -148,6 +151,8 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
+         enableRotationGesture = options.hasKey("enableRotationGesture") && options.getBoolean("enableRotationGesture");
+         disableCropperColorSetters = options.hasKey("disableCropperColorSetters") && options.getBoolean("disableCropperColorSetters");
+         useFrontCamera = options.hasKey("useFrontCamera") && options.getBoolean("useFrontCamera");
++        defaultCropWidth = options.hasKey("defaultCropWidth") ? options.getInt("defaultCropWidth") : 0;
++        defaultCropHeight = options.hasKey("defaultCropHeight") ? options.getInt("defaultCropHeight") : 0;
+         this.options = options;
+     }
+ 
+@@ -775,8 +780,8 @@ class PickerModule extends ReactContextBaseJavaModule implements ActivityEventLi
+                 .of(uri, Uri.fromFile(new File(this.getTmpDir(activity), UUID.randomUUID().toString() + ".jpg")))
+                 .withOptions(options);
+ 
+-        if (width > 0 && height > 0) {
+-            uCrop.withAspectRatio(width, height);
++        if (defaultCropWidth > 0 && defaultCropHeight > 0) {
++            uCrop.withAspectRatio(defaultCropWidth, defaultCropHeight);
+         }
+ 
+         uCrop.start(activity);
+diff --git a/node_modules/react-native-image-crop-picker/android/src/main/res/values/styles.xml b/node_modules/react-native-image-crop-picker/android/src/main/res/values/styles.xml
+new file mode 100644
+index 0000000..149a710
+--- /dev/null
++++ b/node_modules/react-native-image-crop-picker/android/src/main/res/values/styles.xml
+@@ -0,0 +1,8 @@
++<resources>
++    <style name="UCropTheme" parent="Theme.AppCompat.Light.NoActionBar">
++        <item name="android:windowIsFloating">true</item>
++        <item name="android:windowMinWidthMajor">100%</item>
++        <item name="android:windowMinWidthMinor">100%</item>
++        <item name="android:windowContentOverlay">@null</item>
++    </style>
++</resources>
+\ No newline at end of file

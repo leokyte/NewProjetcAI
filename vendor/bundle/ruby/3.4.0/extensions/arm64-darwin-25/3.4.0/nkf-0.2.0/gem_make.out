@@ -1,0 +1,18 @@
+current directory: /Users/guilherme/workspaces/react-native/kyte-pos/vendor/bundle/ruby/3.4.0/gems/nkf-0.2.0/ext/nkf
+/Users/guilherme/.rbenv/versions/3.4.5/bin/ruby extconf.rb
+creating Makefile
+
+current directory: /Users/guilherme/workspaces/react-native/kyte-pos/vendor/bundle/ruby/3.4.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20251125-31828-n3op62 sitelibdir\=./.gem.20251125-31828-n3op62 clean
+
+current directory: /Users/guilherme/workspaces/react-native/kyte-pos/vendor/bundle/ruby/3.4.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20251125-31828-n3op62 sitelibdir\=./.gem.20251125-31828-n3op62
+compiling nkf.c
+linking shared-object nkf.bundle
+
+current directory: /Users/guilherme/workspaces/react-native/kyte-pos/vendor/bundle/ruby/3.4.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20251125-31828-n3op62 sitelibdir\=./.gem.20251125-31828-n3op62 install
+/usr/bin/install -c -m 0755 nkf.bundle ./.gem.20251125-31828-n3op62
+
+current directory: /Users/guilherme/workspaces/react-native/kyte-pos/vendor/bundle/ruby/3.4.0/gems/nkf-0.2.0/ext/nkf
+make DESTDIR\= sitearchdir\=./.gem.20251125-31828-n3op62 sitelibdir\=./.gem.20251125-31828-n3op62 clean

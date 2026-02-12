@@ -1,0 +1,8 @@
+NSCameraUsageDescription = "Kami memerlukan izin untuk menggunakan kamera anda sehingga anda bisa mengambil foto produk anda.";
+NSPhotoLibraryUsageDescription = "Kami memerlukan izin untuk mengakses perpustakaan foto anda sehingga anda bisa memilih foto produk dari sana.";
+NSLocationWhenInUseUsageDescription = "Kami memerlukan izin untuk mengakses lokasi anda untuk memproses pembayaran kartu.";
+NSBluetoothPeripheralUsageDescription = "Kami memerlukan izin Bluetooth untuk memasangkan ponsel anda dengan pembaca kartu anda.";
+NSMicrophoneUsageDescription = "Kami memerlukan izin jack mikrofon untuk memasangkan ponsel anda dengan pembaca kartu anda.";
+NSLocationAlwaysUsageDescription = "Kami memerlukan izin untuk mengakses lokasi anda untuk memproses pembayaran kartu.";
+NSContactsUsageDescription = "Kami memerlukan izin untuk mengakses daftar kontak anda untuk mengimornya ke Kyte.";
+NSBluetoothAlwaysUsageDescription = "Kami memerlukan izin Bluetooth untuk memasangkan ponsel anda dengan pembaca kartu anda.";

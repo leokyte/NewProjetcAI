@@ -1,0 +1,180 @@
+name: kyte-pos-android-CI
+trigger:
+  branches:
+    include:
+      - feature/pipeline
+      - beta
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: NODE_VERSION
+    value: '20.x'
+  - name: ANDROID_HOME
+    value: '/usr/local/lib/android/sdk'
+  - name: ANDROID_SDK_ROOT
+    value: '/usr/local/lib/android/sdk'
+stages:
+  - stage: Generate_APK
+    jobs:
+      - job: GenerateAPK
+        timeoutInMinutes: 180
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(NODE_VERSION)
+          - script: |
+              set -e
+              echo "Detecting Java on agent..."
+              if command -v java >/dev/null 2>&1; then
+                JAVA_VER_STR=$(java -version 2>&1 | head -n 1)
+                echo "Found: $JAVA_VER_STR"
+                if echo "$JAVA_VER_STR" | grep -E -q '"17\.'; then
+                  echo "Using preinstalled Java 17"
+                  echo "##vso[task.setvariable variable=needsJavaInstall]false"
+                else
+                  echo "Preinstalled Java is not 17; will install Java 17"
+                  echo "##vso[task.setvariable variable=needsJavaInstall]true"
+                fi
+              else
+                echo "Java not found; will install Java 17"
+                echo "##vso[task.setvariable variable=needsJavaInstall]true"
+              fi
+            displayName: 'Detect Java'
+
+          - script: |
+              set -e
+              echo "Installing OpenJDK 17 via apt (Ubuntu)..."
+              sudo apt-get update
+              sudo apt-get install -y openjdk-17-jdk
+              JAVA_HOME_DIR=$(dirname $(dirname $(readlink -f $(which javac))))
+              echo "JAVA_HOME will be set to: $JAVA_HOME_DIR"
+              echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_DIR"
+              echo "##vso[task.prependpath]$JAVA_HOME_DIR/bin"
+            displayName: 'Install Java (Ubuntu apt)'
+            condition: eq(variables['needsJavaInstall'], 'true')
+          - script: |
+              echo "JAVA_HOME=$JAVA_HOME"
+              java -version
+            displayName: 'Show Java Version'
+
+          - script: |
+              set -euo pipefail
+              ANDROID_SDK_DIR=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}
+              REQUIRED_NDK_VERSION="27.1.12297006"
+              echo "Disk usage before cleanup:"
+              df -h
+              echo "Removing unused Android NDKs except ${REQUIRED_NDK_VERSION}..."
+              if [ -d "$ANDROID_SDK_DIR/ndk" ]; then
+                for ndk_dir in "$ANDROID_SDK_DIR"/ndk/*; do
+                  if [ -d "$ndk_dir" ] && [ "$(basename "$ndk_dir")" != "$REQUIRED_NDK_VERSION" ]; then
+                    echo "Deleting $ndk_dir"
+                    sudo rm -rf "$ndk_dir"
+                  fi
+                done
+              else
+                echo "NDK directory not found at $ANDROID_SDK_DIR/ndk"
+              fi
+              echo "Removing unused SDK components (emulator + system images)..."
+              for sdk_component in emulator system-images; do
+                if [ -d "$ANDROID_SDK_DIR/$sdk_component" ]; then
+                  echo "Deleting $ANDROID_SDK_DIR/$sdk_component"
+                  sudo rm -rf "$ANDROID_SDK_DIR/$sdk_component"
+                fi
+              done
+              echo "Removing other large pre-installed toolchains..."
+              for path in /usr/share/dotnet /opt/ghc /usr/local/share/boost /home/vsts/.rustup /home/vsts/.cargo; do
+                if [ -d "$path" ]; then
+                  echo "Deleting $path"
+                  sudo rm -rf "$path"
+                fi
+              done
+              if command -v docker >/dev/null 2>&1; then
+                echo "Pruning Docker images..."
+                sudo docker system prune -af || true
+              fi
+              echo "Cleaning apt cache..."
+              sudo apt-get clean
+              echo "Disk usage after cleanup:"
+              df -h
+            displayName: 'Free Disk Space for Android build'
+
+          - script: |
+              set -e
+              if [ -z "$JAVA_HOME" ]; then
+                echo "JAVA_HOME is not set; cannot align Gradle configuration."
+                exit 1
+              fi
+              if [ ! -d "$JAVA_HOME" ]; then
+                echo "JAVA_HOME path does not exist: $JAVA_HOME"
+                exit 1
+              fi
+              GRADLE_PROPERTIES_FILE="android/gradle.properties"
+              if [ ! -f "$GRADLE_PROPERTIES_FILE" ]; then
+                echo "Gradle properties file not found at $GRADLE_PROPERTIES_FILE"
+                exit 1
+              fi
+              if grep -q '^org\.gradle\.java\.home=' "$GRADLE_PROPERTIES_FILE"; then
+                echo "Updating org.gradle.java.home in $GRADLE_PROPERTIES_FILE to point to current JAVA_HOME"
+                sed -i "s|^org\.gradle\.java\.home=.*|org.gradle.java.home=${JAVA_HOME}|" "$GRADLE_PROPERTIES_FILE"
+              else
+                echo "Appending org.gradle.java.home to $GRADLE_PROPERTIES_FILE"
+                echo "org.gradle.java.home=${JAVA_HOME}" >> "$GRADLE_PROPERTIES_FILE"
+              fi
+            displayName: 'Align Gradle Java Home'
+
+          - script: |
+              echo "Installing dependencies..."
+              yarn install --non-interactive
+            displayName: 'Install Dependencies'
+          - script: |
+              set -e
+              echo "Configuring Android SDK PATH..."
+              echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+              ANDROID_SDK_DIR=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}
+              if [ -d "$ANDROID_SDK_DIR/cmdline-tools/latest/bin" ]; then
+                echo "Adding cmdline-tools/latest/bin to PATH"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/cmdline-tools/latest/bin"
+              elif [ -d "$ANDROID_SDK_DIR/cmdline-tools/bin" ]; then
+                echo "Adding cmdline-tools/bin to PATH"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/cmdline-tools/bin"
+              elif [ -d "$ANDROID_SDK_DIR/tools/bin" ]; then
+                echo "Adding tools/bin to PATH (legacy)"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/tools/bin"
+              else
+                echo "Warning: No sdkmanager directory found under $ANDROID_SDK_DIR"
+              fi
+              echo "Adding platform-tools to PATH"
+              echo "##vso[task.prependpath]$ANDROID_SDK_DIR/platform-tools"
+              which sdkmanager || true
+            displayName: 'Configure Android SDK PATH'
+
+          - script: |
+              echo "Setting up Android SDK..."
+              yes | sdkmanager --licenses
+              sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+            displayName: 'Setup Android SDK'
+
+          - script: |
+              echo "Generating JS bundle for Android..."
+              mkdir -p android/app/src/main/assets
+              ENVFILE=.env.stage yarn run build:android:jsbundle:legacy
+            displayName: 'Bundle JS (Android)'
+          - script: |
+              set -e
+              echo "Building Android APK (stage) via Gradle (no clean, single ABI)..."
+              cd android
+              ENVFILE=.env.stage ./gradlew assemblePosRelease \
+                -PreactNativeArchitectures=arm64-v8a \
+                --parallel \
+                --build-cache \
+                -x lint \
+                -Dorg.gradle.workers.max=4
+            displayName: 'Build APK'
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish APK Artifacts'
+            inputs:
+              pathToPublish: 'android/app/build/outputs/apk/pos/release'
+              artifactName: 'pos-release-apks'
+              publishLocation: 'Container'

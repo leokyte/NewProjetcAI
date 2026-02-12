@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Kyte</string>
+    <string name="intercom_gcm_sender_id">1068616619719</string>
+    <string name="facebook_app_id">187826571838563</string>
+    <string name="fb_login_protocol_scheme">fb187826571838563</string>
+    <string name="filter_view_example_kyte">Kyte</string>
+</resources>

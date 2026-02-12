@@ -1,0 +1,456 @@
+name: kyte-pos-android-CD
+trigger:
+  branches:
+    include:
+      - feature/pipeline
+      - beta
+  paths:
+    include:
+      - android/app/build.gradle
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: NODE_VERSION
+    value: '20.x'
+  - name: ANDROID_HOME
+    value: '/usr/local/lib/android/sdk'
+  - name: ANDROID_SDK_ROOT
+    value: '/usr/local/lib/android/sdk'
+
+stages:
+  - stage: Build
+    displayName: 'Build Android App Bundle'
+    jobs:
+      - job: BuildAndroid
+        displayName: 'Build Android AAB'
+        timeoutInMinutes: 240
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(NODE_VERSION)
+
+          - script: |
+              set -e
+              echo "Installing Fastlane (user space)..."
+              # Temporarily move Gemfile to avoid bundler warnings
+              mv Gemfile Gemfile.backup || true
+              export GEM_HOME="$HOME/.gem"
+              export GEM_PATH="$GEM_HOME"
+              export PATH="$GEM_HOME/bin:$PATH"
+              gem install --user-install --no-document fastlane
+              USER_GEM_BIN=$(ruby -e 'require "rubygems"; print Gem.user_dir')/bin
+              echo "Adding $USER_GEM_BIN to PATH for subsequent steps"
+              echo "##vso[task.prependpath]$USER_GEM_BIN"
+              # Restore Gemfile
+              mv Gemfile.backup Gemfile || true
+            displayName: 'Install Fastlane (Early)'
+
+          - script: |
+              set -e
+              echo "Preparing Fastlane and Google Play credentials (early)..."
+              mkdir -p fastlane
+
+              # Use fastlane-android-key.json from the project
+              if [ -f "fastlane-android-key.json" ]; then
+                cp fastlane-android-key.json fastlane/google-play-key.json
+                echo "Copied fastlane-android-key.json to fastlane/google-play-key.json"
+              else
+                echo "fastlane-android-key.json not found in project root" >&2
+                exit 1
+              fi
+
+              PACKAGE_NAME="com.kyte"
+              echo "package_name('$PACKAGE_NAME')" > fastlane/Appfile
+              echo "json_key_file('$(pwd)/fastlane/google-play-key.json')" >> fastlane/Appfile
+              echo "Created fastlane/Appfile"
+
+              cat > fastlane/Fastfile <<'RUBY'
+              default_platform(:android)
+
+              PACKAGE_NAME = 'com.kyte'
+
+              platform :android do
+                desc "Get the latest versionCode from all Play Store tracks"
+                lane :fetch_latest_version_code do
+                  internal = google_play_track_version_codes(track: 'internal') || []
+                  alpha = google_play_track_version_codes(track: 'alpha') || []
+                  beta = google_play_track_version_codes(track: 'beta') || []
+                  production = google_play_track_version_codes(track: 'production') || []
+                  latest = (internal + alpha + beta + production).map(&:to_i).max || 0
+                  UI.message("LATEST_PLAY_VERSION_CODE=#{latest}")
+                end
+
+                desc "Upload AAB to Google Play (internal track)"
+                lane :deploy_to_play_store do
+                  aab_path = ENV['AAB_PATH'] || "../android/app/build/outputs/bundle/posRelease/app-pos-release.aab"
+                  UI.user_error!("AAB not found: #{aab_path}") unless File.exist?(aab_path)
+
+                  supply(
+                    aab: aab_path,
+                    track: "internal",
+                    skip_upload_metadata: true,
+                    skip_upload_images: true,
+                    skip_upload_screenshots: true,
+                    validate_only: false,
+                  )
+                end
+              end
+              RUBY
+              echo "Created fastlane/Fastfile with fetch_latest_version_code and deploy lanes"
+            displayName: 'Initialize Fastlane'
+
+          - script: |
+              set -e
+              echo "Extracting pos_versionCode from android/app/build.gradle..."
+              POS_VERSION_CODE=$(awk -F '=' '/pos_versionCode/ {gsub(/ /, "", $2); print $2}' android/app/build.gradle | head -n1)
+              if [ -z "$POS_VERSION_CODE" ]; then
+                echo "Could not extract pos_versionCode from build.gradle" >&2
+                echo "build.gradle content around pos_versionCode:" >&2
+                grep -A2 -B2 "pos_versionCode" android/app/build.gradle || true
+                exit 1
+              fi
+              echo "pos_versionCode in repo: $POS_VERSION_CODE"
+
+              ABI_MAX_MULTIPLIER=4  # highest value in abiVersionCodes map (x86_64)
+              ABI_CODE_MULTIPLIER=2097150
+              BUNDLE_VERSION_CODE=$((ABI_MAX_MULTIPLIER * ABI_CODE_MULTIPLIER + POS_VERSION_CODE))
+              echo "Calculated AAB versionCode (bundleVersionCodeOffset + pos_versionCode): $BUNDLE_VERSION_CODE"
+
+              echo "Querying Google Play for latest uploaded versionCode via Fastlane..."
+              echo "Checking if fastlane directory exists and has required files..."
+              ls -la fastlane/ || true
+              echo "Appfile contents:"
+              cat fastlane/Appfile || true
+              echo "Google Play key file exists:"
+              ls -la fastlane/google-play-key.json || true
+
+              FASTLANE_OUTPUT=$(fastlane fetch_latest_version_code 2>&1 || true)
+              echo "Fastlane output:"
+              echo "$FASTLANE_OUTPUT"
+
+              # Try multiple patterns to extract the version code
+              LATEST=$(printf "%s\n" "$FASTLANE_OUTPUT" | sed -n 's/.*LATEST_PLAY_VERSION_CODE=\([0-9][0-9]*\).*/\1/p' | tail -n1)
+              if [ -z "$LATEST" ]; then
+                # Try alternative patterns
+                LATEST=$(printf "%s\n" "$FASTLANE_OUTPUT" | grep -o 'versionCode[[:space:]]*[0-9][0-9]*' | grep -o '[0-9][0-9]*' | sort -n | tail -n1)
+              fi
+              if [ -z "$LATEST" ]; then
+                # If still no match, try to find any number that looks like a version code
+                LATEST=$(printf "%s\n" "$FASTLANE_OUTPUT" | grep -o '[0-9][0-9][0-9][0-9]*' | sort -n | tail -n1)
+              fi
+
+              if [ -z "$LATEST" ]; then
+                echo "Failed to determine latest versionCode from Play Store" >&2
+                echo "Trying fallback: assume no previous uploads (versionCode 0)" >&2
+                LATEST=0
+              fi
+              echo "Latest uploaded versionCode on Play: $LATEST"
+
+              # For AAB uploads, the final versionCode is bundleVersionCodeOffset + pos_versionCode.
+              if [ "$BUNDLE_VERSION_CODE" -le "$LATEST" ]; then
+                echo "AAB versionCode ($BUNDLE_VERSION_CODE) is not greater than latest Play Store versionCode ($LATEST)." >&2
+                echo "Bump pos_versionCode in android/app/build.gradle so that bundleVersionCodeOffset + pos_versionCode exceeds $LATEST, then retry." >&2
+                exit 1
+              fi
+              echo "Version code check passed: AAB versionCode ($BUNDLE_VERSION_CODE) > Play Store latest ($LATEST)"
+            displayName: 'Guard: Fail if versionCode is not higher than Play Store'
+
+          - script: |
+              set -e
+              echo "Detecting Java on agent..."
+              if command -v java >/dev/null 2>&1; then
+                JAVA_VER_STR=$(java -version 2>&1 | head -n 1)
+                echo "Found: $JAVA_VER_STR"
+                if echo "$JAVA_VER_STR" | grep -E -q '"17\.'; then
+                  echo "Using preinstalled Java 17"
+                  echo "##vso[task.setvariable variable=needsJavaInstall]false"
+                else
+                  echo "Preinstalled Java is not 17; will install Java 17"
+                  echo "##vso[task.setvariable variable=needsJavaInstall]true"
+                fi
+              else
+                echo "Java not found; will install Java 17"
+                echo "##vso[task.setvariable variable=needsJavaInstall]true"
+              fi
+            displayName: 'Detect Java'
+
+          - script: |
+              set -e
+              echo "Installing OpenJDK 17 via apt (Ubuntu)..."
+              sudo apt-get update
+              sudo apt-get install -y openjdk-17-jdk
+              JAVA_HOME_DIR=$(dirname $(dirname $(readlink -f $(which javac))))
+              echo "JAVA_HOME will be set to: $JAVA_HOME_DIR"
+              echo "##vso[task.setvariable variable=JAVA_HOME]$JAVA_HOME_DIR"
+              echo "##vso[task.prependpath]$JAVA_HOME_DIR/bin"
+            displayName: 'Install Java (Ubuntu apt)'
+            condition: eq(variables['needsJavaInstall'], 'true')
+
+          - script: |
+              echo "JAVA_HOME=$JAVA_HOME"
+              java -version
+            displayName: 'Show Java Version'
+
+          - script: |
+              set -euo pipefail
+              ANDROID_SDK_DIR=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}
+              REQUIRED_NDK_VERSION="27.1.12297006"
+              echo "Disk usage before cleanup:"
+              df -h
+              echo "Removing unused Android NDKs except ${REQUIRED_NDK_VERSION}..."
+              if [ -d "$ANDROID_SDK_DIR/ndk" ]; then
+                for ndk_dir in "$ANDROID_SDK_DIR"/ndk/*; do
+                  if [ -d "$ndk_dir" ] && [ "$(basename "$ndk_dir")" != "$REQUIRED_NDK_VERSION" ]; then
+                    echo "Deleting $ndk_dir"
+                    sudo rm -rf "$ndk_dir"
+                  fi
+                done
+              else
+                echo "NDK directory not found at $ANDROID_SDK_DIR/ndk"
+              fi
+              echo "Removing unused SDK components (emulator + system images)..."
+              for sdk_component in emulator system-images; do
+                if [ -d "$ANDROID_SDK_DIR/$sdk_component" ]; then
+                  echo "Deleting $ANDROID_SDK_DIR/$sdk_component"
+                  sudo rm -rf "$ANDROID_SDK_DIR/$sdk_component"
+                fi
+              done
+              echo "Removing other large pre-installed toolchains..."
+              for path in /usr/share/dotnet /opt/ghc /usr/local/share/boost /home/vsts/.rustup /home/vsts/.cargo; do
+                if [ -d "$path" ]; then
+                  echo "Deleting $path"
+                  sudo rm -rf "$path"
+                fi
+              done
+              if command -v docker >/dev/null 2>&1; then
+                echo "Pruning Docker images..."
+                sudo docker system prune -af || true
+              fi
+              echo "Cleaning apt cache..."
+              sudo apt-get clean
+              echo "Disk usage after cleanup:"
+              df -h
+            displayName: 'Free Disk Space for Android build'
+
+          - script: |
+              echo "Installing dependencies..."
+              yarn install --non-interactive
+            displayName: 'Install Dependencies'
+
+          - script: |
+              set -e
+              echo "Configuring Android SDK PATH..."
+              echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+              ANDROID_SDK_DIR=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}
+              if [ -d "$ANDROID_SDK_DIR/cmdline-tools/latest/bin" ]; then
+                echo "Adding cmdline-tools/latest/bin to PATH"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/cmdline-tools/latest/bin"
+              elif [ -d "$ANDROID_SDK_DIR/cmdline-tools/bin" ]; then
+                echo "Adding cmdline-tools/bin to PATH"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/cmdline-tools/bin"
+              elif [ -d "$ANDROID_SDK_DIR/tools/bin" ]; then
+                echo "Adding tools/bin to PATH (legacy)"
+                echo "##vso[task.prependpath]$ANDROID_SDK_DIR/tools/bin"
+              else
+                echo "Warning: No sdkmanager directory found under $ANDROID_SDK_DIR"
+              fi
+              echo "Adding platform-tools to PATH"
+              echo "##vso[task.prependpath]$ANDROID_SDK_DIR/platform-tools"
+              which sdkmanager || true
+            displayName: 'Configure Android SDK PATH'
+
+          - script: |
+              echo "Setting up Android SDK..."
+              yes | sdkmanager --licenses
+              sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+            displayName: 'Setup Android SDK'
+
+          - script: |
+              echo "Generating JS bundle for Android..."
+              mkdir -p android/app/src/main/assets
+              ENVFILE=.env.prod yarn run build:android:jsbundle:legacy
+            displayName: 'Bundle JS (Android)'
+
+          - script: |
+              set -e
+              echo "Pre-build sanity: computing expected AAB versionCode from gradle file..."
+              POS_VERSION_CODE=$(awk -F '=' '/pos_versionCode/ {gsub(/ /, "", $2); print $2}' android/app/build.gradle | head -n1)
+              ABI_MAX_MULTIPLIER=4  # highest value in abiVersionCodes map (x86_64)
+              ABI_CODE_MULTIPLIER=2097150
+              EXPECTED_VERSION_CODE=$((ABI_MAX_MULTIPLIER * ABI_CODE_MULTIPLIER + POS_VERSION_CODE))
+              echo "Expected AAB versionCode: $EXPECTED_VERSION_CODE (pos_versionCode=$POS_VERSION_CODE)"
+            displayName: 'Pre-build: compute expected AAB versionCode'
+
+          - script: |
+              echo "Building Android App Bundle (prod) via yarn script..."
+              ORG_GRADLE_PROJECT_reactNativeArchitectures=armeabi-v7a,arm64-v8a yarn run build:pos:bundle:prod:legacy
+            displayName: 'Build AAB'
+            env:
+              MYAPP_RELEASE_STORE_FILE: android/app/kyte-key.keystore
+
+          - script: |
+              set -e
+              AAB_PATH="android/app/build/outputs/bundle/posRelease/app-pos-release.aab"
+              if [ ! -f "$AAB_PATH" ]; then
+                echo "AAB not found at $AAB_PATH" >&2
+                ls -la android/app/build/outputs/bundle/posRelease || true
+                exit 1
+              fi
+
+              # Compute expected AAB versionCode (ABI offset + pos_versionCode)
+              POS_VERSION_CODE=$(awk -F '=' '/pos_versionCode/ {gsub(/ /, "", $2); print $2}' android/app/build.gradle | head -n1)
+              ABI_MAX_MULTIPLIER=4  # highest value in abiVersionCodes map (x86_64)
+              ABI_CODE_MULTIPLIER=2097150
+              EXPECTED_VERSION_CODE=$((ABI_MAX_MULTIPLIER * ABI_CODE_MULTIPLIER + POS_VERSION_CODE))
+              echo "Expected AAB versionCode (offset + pos_versionCode): $EXPECTED_VERSION_CODE"
+
+              echo "Downloading bundletool..."
+              BUNDLETOOL_JAR="/tmp/bundletool.jar"
+              curl -L -o "$BUNDLETOOL_JAR" https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar
+
+              echo "Reading versionCode from built AAB..."
+              ACTUAL_VERSION_CODE=$(java -jar "$BUNDLETOOL_JAR" dump manifest --bundle "$AAB_PATH" | sed -n 's/.*android:versionCode="\([0-9]\+\)".*/\1/p' | head -n1)
+              if [ -z "$ACTUAL_VERSION_CODE" ]; then
+                echo "Failed to extract versionCode from AAB manifest" >&2
+                exit 1
+              fi
+              echo "Actual AAB versionCode: $ACTUAL_VERSION_CODE"
+
+              if [ "$ACTUAL_VERSION_CODE" -ne "$EXPECTED_VERSION_CODE" ]; then
+                echo "AAB versionCode ($ACTUAL_VERSION_CODE) does not match expected ($EXPECTED_VERSION_CODE)." >&2
+                echo "Verify Gradle versionCode configuration and rebuild." >&2
+                exit 1
+              fi
+              echo "AAB versionCode matches expected offset."
+            displayName: 'Validate AAB versionCode'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish AAB Artifact'
+            inputs:
+              pathToPublish: 'android/app/build/outputs/bundle/posRelease'
+              artifactName: 'android-app-bundle'
+              publishLocation: 'Container'
+
+  - stage: Deploy
+    displayName: 'Deploy to Play Store'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - job: DeployToPlayStore
+        displayName: 'Deploy AAB to Play Store'
+        timeoutInMinutes: 240
+        steps:
+          - checkout: self
+            displayName: 'Checkout source code'
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download AAB Artifact'
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'android-app-bundle'
+              downloadPath: '$(Pipeline.Workspace)/artifacts'
+
+          - task: NodeTool@0
+            displayName: 'Install Node.js for Fastlane'
+            inputs:
+              versionSpec: $(NODE_VERSION)
+
+          - script: |
+              set -e
+              echo "Installing Fastlane (user space)..."
+              # Temporarily move Gemfile to avoid bundler warnings
+              mv Gemfile Gemfile.backup || true
+              export GEM_HOME="$HOME/.gem"
+              export GEM_PATH="$GEM_HOME"
+              export PATH="$GEM_HOME/bin:$PATH"
+              gem install --user-install --no-document fastlane
+              USER_GEM_BIN=$(ruby -e 'require "rubygems"; print Gem.user_dir')/bin
+              echo "Adding $USER_GEM_BIN to PATH for subsequent steps"
+              echo "##vso[task.prependpath]$USER_GEM_BIN"
+              # Restore Gemfile
+              mv Gemfile.backup Gemfile || true
+            displayName: 'Install Fastlane'
+
+          - script: |
+              set -e
+              echo "Preparing Fastlane and Google Play credentials..."
+              mkdir -p fastlane
+
+              # Use fastlane-android-key.json from the project
+              if [ -f "fastlane-android-key.json" ]; then
+                cp fastlane-android-key.json fastlane/google-play-key.json
+                echo "Copied fastlane-android-key.json to fastlane/google-play-key.json"
+              else
+                echo "fastlane-android-key.json not found in project root" >&2
+                exit 1
+              fi
+
+              PACKAGE_NAME="com.kyte"
+              echo "package_name('$PACKAGE_NAME')" > fastlane/Appfile
+              echo "json_key_file('$(pwd)/fastlane/google-play-key.json')" >> fastlane/Appfile
+              echo "Created fastlane/Appfile"
+
+              # Try expected local build path first
+              AAB_PATH="android/app/build/outputs/bundle/posRelease/app-pos-release.aab"
+              if [ ! -f "$AAB_PATH" ]; then
+                echo "AAB not found at $AAB_PATH; searching downloaded artifacts..."
+                SEARCH_DIR="$(Pipeline.Workspace)/artifacts/android-app-bundle"
+                if [ -d "$SEARCH_DIR" ]; then
+                  FOUND=$(find "$SEARCH_DIR" -type f -name "*.aab" | head -n 1 || true)
+                  if [ -n "$FOUND" ] && [ -f "$FOUND" ]; then
+                    AAB_PATH="$FOUND"
+                    echo "Found AAB in artifacts: $AAB_PATH"
+                  else
+                    echo "No .aab found under $SEARCH_DIR" >&2
+                    echo "Contents of artifacts dir:" >&2
+                    find "$(Pipeline.Workspace)/artifacts" -maxdepth 3 -type d -print || true
+                    exit 1
+                  fi
+                else
+                  echo "Artifacts directory not found at $SEARCH_DIR" >&2
+                  exit 1
+                fi
+              fi
+              echo "Using AAB: $AAB_PATH"
+              echo "##vso[task.setvariable variable=AAB_PATH]$AAB_PATH"
+              cat > fastlane/Fastfile <<'RUBY'
+              default_platform(:android)
+
+              platform :android do
+                desc "Get the latest versionCode from all Play Store tracks"
+                lane :fetch_latest_version_code do
+                  internal = google_play_track_version_codes(track: 'internal') || []
+                  alpha = google_play_track_version_codes(track: 'alpha') || []
+                  beta = google_play_track_version_codes(track: 'beta') || []
+                  production = google_play_track_version_codes(track: 'production') || []
+                  latest = (internal + alpha + beta + production).map(&:to_i).max || 0
+                  UI.message("LATEST_PLAY_VERSION_CODE=#{latest}")
+                end
+
+                desc "Upload AAB to Google Play (internal track)"
+                lane :deploy_to_play_store do
+                  aab_path = ENV['AAB_PATH'] || "../android/app/build/outputs/bundle/posRelease/app-pos-release.aab"
+                  UI.user_error!("AAB not found: #{aab_path}") unless File.exist?(aab_path)
+
+                  supply(
+                    aab: aab_path,
+                    track: "internal",
+                    skip_upload_metadata: true,
+                    skip_upload_images: true,
+                    skip_upload_screenshots: true,
+                    validate_only: false,
+                  )
+                end
+              end
+              RUBY
+              echo "Created fastlane/Fastfile with fetch_latest_version_code and deploy_to_play_store lanes"
+            displayName: 'Initialize Fastlane'
+
+          - script: |
+              echo "Deploying to Play Store..."
+              fastlane deploy_to_play_store
+            displayName: 'Deploy to Play Store'

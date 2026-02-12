@@ -1,0 +1,9 @@
+export { ButtonBottom } from './ButtonBottom';
+export { CatalogInfo } from './CatalogInfo';
+export { ContentIntro } from './ContentIntro';
+export { Header } from './Header';
+export { HeaderIntegrated } from './HeaderIntegrated';
+export { InfoAccount } from './InfoAccount';
+export { LoadingComponent } from './LoadingComponent';
+export { ModalMoreInfo } from './ModalMoreInfo';
+export { TiktokInfo } from './TiktokInfo';

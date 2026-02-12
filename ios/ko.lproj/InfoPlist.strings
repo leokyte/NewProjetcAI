@@ -1,0 +1,7 @@
+NSCameraUsageDescription = "제품 사진을 찍을 수 있도록 카메라 사용 권한이 필요합니다.";
+NSPhotoLibraryUsageDescription = "거기에서 제품 사진을 선택할 수 있도록 사진 라이브러리에 액세스 할 수있는 권한이 필요합니다.";
+NSLocationWhenInUseUsageDescription = "사용중인 위치를 사용하려면 귀하의 허락이 필요합니다.";
+NSBluetoothPeripheralUsageDescription = "우리는 귀하의 블루투스를 사용하여 신용 카드 기계를 쌍으로 사용해야합니다.";
+NSMicrophoneUsageDescription = "마이크 잭을 사용하여 신용 카드 기기를 페어링해야합니다.";
+NSLocationAlwaysUsageDescription = "사용중인 위치를 사용하려면 귀하의 허락이 필요합니다.";
+NSContactsUsageDescription = "고객을 가져 오거나 내보내려면 주소록에 액세스 할 수있는 권한이 필요합니다.";

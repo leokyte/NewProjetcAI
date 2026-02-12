@@ -1,0 +1,33 @@
+name: kyte-pos-PR-reviewer
+trigger: 
+  branches:
+    include:
+      - beta-frontline
+jobs:
+- job:
+  displayName: "Code Reviewer"
+  pool:
+    vmImage: ubuntu-latest 
+ 
+  steps:
+  - checkout: self
+    persistCredentials: true
+
+  - task: JPCompcombr@26
+    displayName: GPTPullRequestReview
+    inputs:
+      api_key: '2hTBOWgGQgS6ZLu0TRuctMHRGjM3MoQiwqrgzetHi54V8PUW5G6ZJQQJ99BFACYeBjFXJ3w3AAABACOG2HJe'
+      model: 'gpt-5-mini'
+      aoi_endpoint: 'https://kyte-open-ai.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview'
+      aoi_tokenMax: 1000
+      aoi_temperature: 0
+      use_https: true
+      prompt: |
+        Atue como revisor de código de uma solicitação de pull, fornecendo feedback sobre possíveis bugs e problemas de código limpo.
+        Você recebe as alterações da solicitação de pull em um formato de patch.
+        Cada entrada de patch tem a mensagem de confirmação na linha de assunto, seguida pelas alterações de código (diffs) em um formato unidiff.
+
+        Como revisor de código, sua tarefa é:
+        - Revisar apenas as linhas adicionadas, editadas ou excluídas.
+        - Se não houver bugs e as alterações estiverem corretas, não adicione comentários.
+        - Se houver bugs ou alterações de código incorretas, sugira as melhorias.

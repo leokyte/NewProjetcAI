@@ -1,0 +1,8 @@
+NSCameraUsageDescription = "Precisamos de su autorización para acceder a su cámara para poder tomar fotografías de sus productos para identificarlos mejor en el inventario, compartirlos con los clientes y mostrarlos en el catálogo.";
+NSPhotoLibraryUsageDescription = "Precisamos de su autorización para acceder a su fototeca para poder tomar fotografías de sus productos para identificarlos mejor en el inventario, compartirlos con los clientes y mostrarlos en el catálogo.";
+NSLocationWhenInUseUsageDescription = "El Kyte necesita su autorización para utilizar su ubicación mientras esté en uso.";
+NSBluetoothPeripheralUsageDescription = "Necesitamos usar su bluetooth para sincronizar las maqunas de tarjeta de crédito.";
+NSMicrophoneUsageDescription = "Necesitamos usar su micrófono para usar las maquinas de tarjeta de crédito.";
+NSLocationAlwaysUsageDescription = "El Kyte necesita su autorización para utilizar su ubicación mientras esté en uso.";
+NSContactsUsageDescription = "Se requiere permiso de acceder a su lista de contactos para completar esta acción. Los contactos se cargarán en nuestros servidores. Para mas detalles lea nuestra política de privacidad.";
+NSBluetoothAlwaysUsageDescription = "Precisamos utilizar seu bluetooth para parear as maquininhas de cartão de crédito e de impressão.";

@@ -1,0 +1,16 @@
+{
+	"printWidth": 100,
+	"singleQuote": true,
+	"trailingComma": "all",
+	"overrides": [
+		{
+			"files": "*.js",
+			"options": {
+				"printWidth": 100,
+				"singleQuote": true,
+				"trailingComma": "all",
+				"parser": "babel"
+			}
+		}
+	]
+}

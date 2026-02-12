@@ -1,0 +1,8 @@
+NSCameraUsageDescription = " نحتاج إلى إذن استخدام الكاميرا حتى تستطيع التقاط صور لمنتجاتك";
+NSPhotoLibraryUsageDescription = " نحتاج إلى إذن الوصول إلى مكتبة الصور حتى تتمكن من اختيار صور المنتج من هناك";
+NSLocationWhenInUseUsageDescription = " نحتاج إلى إذن الوصول إلى موقعك من أجل معالجة عملية الدفع بالبطاقة ";
+NSBluetoothPeripheralUsageDescription = " نحتاج إلى إذن الوصول إلى البلوتوت من أجل إقران هاتفك بقارئ البطاقة";
+NSMicrophoneUsageDescription = " نحتاج إلى إذن الوصول إلى مقبس الميكروفون من أجل إقران هاتفك بقارئ البطاقة";
+NSLocationAlwaysUsageDescription = " نحتاج إلى إذن الوصول إلى موقعك من أجل معالجة عملية الدفع بالبطاقة";
+NSContactsUsageDescription = " نحتاج إلى إذن الوصول إلى قائمة جهات الاتصال من أجل نقلها إلى كايت ";
+NSBluetoothAlwaysUsageDescription = " نحتاج إلى إذن الوصول إلى البلوتوت من أجل إقران هاتفك بقارئ البطاقة";

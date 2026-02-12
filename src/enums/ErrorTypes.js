@@ -1,0 +1,32 @@
+export const ErrorTypes = {
+  IOS_PAYMENT: 0,
+  ANDROID_PAYMENT: 1,
+  ACCOUNT_REGISTER: 2,
+  ACCOUNT_AUTH: 3,
+  IOS_PAYMENT_CONFIRMATION: 4,
+  IOS_PAYMENT_CHECK: 5,
+  REALM_INSERT_ERROR: 6,
+  REALM_UPDATE_ERROR: 7,
+  REALM_UPDATE_VIRTUAL_DATA: 8,
+  REALM_UPDATE_MANY_VIRTUAL_DATA: 9,
+  FIRESTORE_SYNC_UP: 10,
+
+  STORAGE_IMAGE_UPLOAD_ALREADY_EXISTS: 11,
+  STORAGE_IMAGE_UPLOAD_DOESNT_EXISTS_LOCALLY: 11,
+
+  items: [
+    { msg: 'An error occurred during an user\'s subscription payment', type: 'IosPayment' },
+    { msg: 'An error occurred during an user\'s subscription payment', type: 'AndroidPayment' },
+    { msg: 'An error occurred when an user attempted to create an account.', type: 'AccountRegister' },
+    { msg: 'An error occurred when an user attempted to authenticate.', type: 'AccountAuth' },
+    { msg: 'An error occurred while Kyte attempted to confirm a payment transaction.', type: 'IosPaymentConfirmation' },
+    { msg: 'An error occurred while Kyte attempted to list an user\'s payments.', type: 'IosPaymentCheck' },
+    { msg: 'An error occurred while Kyte attempted to CREATE something in realm database.', type: 'RealmInsertError' },
+    { msg: 'An error occurred while Kyte attempted to UPDATE something in realm database.', type: 'RealmUpdateError' },
+    { msg: 'An error occurred while Kyte attempted to UPDATE VIRTUAL DATA in realm database.', type: 'RealmUpdateVirtualError' },
+    { msg: 'An error occurred while Kyte attempted to UPDATE MANY VIRTUAL DATA in realm database.', type: 'RealmUpdateManyVirtualError' },
+    { msg: 'An error occurred while Kyte attempted to SYNC UP in firestore.', type: 'FirestoreSyncUp' },
+    { msg: 'That image has been uploaded before.', type: 'kyte/image-already-uploaded' },
+    { msg: 'That image doesnt exists locally.', type: 'kyte/image-doesnt-exists-locally' },
+  ],
+};

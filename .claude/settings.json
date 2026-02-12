@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "kyte-agent": {
+      "type": "url",
+      "url": "https://kyte-agent-mcp.vercel.app/mcp"
+    },
+    "firebase": {
+      "command": "firebase",
+      "args": [
+        "mcp"
+      ]
+    },
+    "figma-remote-mcp": {
+      "type": "url",
+      "url": "https://mcp.figma.com/mcp"
+    },
+    "context7": {
+      "type": "url",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

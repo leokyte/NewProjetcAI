@@ -1,0 +1,11 @@
+NSCameraUsageDescription = "We ask permission to access your camera so you can take pictures of your products to better identify them in inventory, share them with customers and display them in the catalog.";
+NSPhotoLibraryUsageDescription = "We ask permission to access your photo library so you can choose pictures of your products to better identify them in inventory, share them with customers and display them in the catalog.";
+NSLocationWhenInUseUsageDescription = "We need permission to access your location to process card payments.";
+NSBluetoothPeripheralUsageDescription = "We need Bluetooth permission to pair your phone with your card reader.";
+NSMicrophoneUsageDescription = "We need microphone jack permission to pair your phone with your card reader.";
+NSLocationAlwaysUsageDescription = "We need permission to access your location to process card payments.";
+NSContactsUsageDescription = "To complete this action we need permission to access your contact list. Your data will be uploaded to our server to make this possible. For more information read our Privacy Policy.";
+NSBluetoothAlwaysUsageDescription = "We need Bluetooth permission to pair your phone with your card reader and printer.";
+NSUserTrackingUsageDescription = "Your data will be used to measure and improve our advertising efficiency.";
+CFBundleDisplayName = "Kyte Catalog";
+CFBundleName = "Kyte Catalog";

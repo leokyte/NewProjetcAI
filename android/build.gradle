@@ -1,0 +1,62 @@
+buildscript {
+    ext {
+        buildToolsVersion = "35.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 35
+        targetSdkVersion = 35
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.1.20"
+        flipperVersion = '0.99.0'
+        runtimeLibVersion = '2.9.1'
+        okhttp = "4.12.0" // Pin okhttp for rn-fetch-blob to avoid SNAPSHOT resolution
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath("com.google.gms:google-services:4.4.2")
+        classpath("com.google.firebase:firebase-crashlytics-gradle:3.0.5")
+        classpath("com.google.firebase:perf-plugin:2.0.0")
+    }
+}
+
+subprojects { subproject ->
+    afterEvaluate {
+        if ((subproject.plugins.hasPlugin('com.android.application') || subproject.plugins.hasPlugin('com.android.library')) && subproject.hasProperty('android')) {
+            subproject.android {
+                compileSdkVersion rootProject.ext.compileSdkVersion
+                buildToolsVersion rootProject.ext.buildToolsVersion
+            }
+
+            // Disable lint for the Intercom RN module to avoid ASM instrumentation crashes during lintVital.
+            if (subproject.name == "intercom_intercom-react-native") {
+                subproject.tasks.matching { it.name.toLowerCase().contains('lint') }.configureEach {
+                    it.enabled = false
+                }
+            }
+        }
+    }
+}
+
+allprojects {
+    repositories {
+        mavenLocal()
+        google()
+        maven { url 'https://maven.sumup.com/releases' }
+        maven { url "$rootDir/../node_modules/react-native/android" }
+        mavenCentral {
+            content {
+                excludeGroup "com.facebook.react"
+            }
+        }
+        mavenCentral()
+        maven { url 'https://maven.google.com' }
+        maven { url "https://www.jitpack.io" }
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"
